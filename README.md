@@ -140,3 +140,8 @@ long-lived token (berlaku ±60 hari) dan simpan di `IG_ACCESS_TOKEN`.
 dipotong dengan `…`. Naikkan `MAX_TEXT_LENGTH` kalau mau pesan lebih panjang.
 
 **GIF terlalu besar** — turunkan `GIF_SIZE` (mis. 400) atau `GIF_FRAMES` (mis. 14).
+
+## Lisensi
+
+Proyek ini dilindungi di bawah lisensi [MIT](LICENSE).
+
