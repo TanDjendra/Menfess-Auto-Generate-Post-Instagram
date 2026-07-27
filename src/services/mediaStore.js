@@ -5,15 +5,21 @@
  *   - show a gallery/preview page where the GIF can be downloaded for Stories
  */
 
-const fs = require('fs');
-const path = require('path');
+const os = require('os');
 
 require('dotenv').config();
 
-const MEDIA_DIR = path.join(process.cwd(), 'temp', 'media');
+const MEDIA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'media')
+  : path.join(process.cwd(), 'temp', 'media');
+
 const FILE_PATTERN = /^menfess_([a-zA-Z0-9_-]+)_(\d+)\.(png|gif|jpg|jpeg)$/;
 
-if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+} catch (e) {
+  console.warn(`[MediaStore] Could not create directory ${MEDIA_DIR}: ${e.message}`);
+}
 
 /** Public base URL of this service, e.g. https://menfess.onrender.com */
 function baseUrl() {

@@ -29,9 +29,13 @@ for (const dir of [
   path.join(process.cwd(), 'assets', 'fonts'),
   mediaStore.MEDIA_DIR
 ]) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log(`[Startup] Created directory: ${dir}`);
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`[Startup] Created directory: ${dir}`);
+    }
+  } catch (e) {
+    console.warn(`[Startup] Warning: Could not create directory ${dir}: ${e.message}`);
   }
 }
 
@@ -304,18 +308,22 @@ const server = http.createServer((req, res) => {
   res.end('Not Found');
 });
 
-server.listen(PORT, () => {
-  console.log(`[Startup] Web server listening on http://localhost:${PORT}`);
-  if (!mediaStore.baseUrl()) {
-    console.log('[Startup] Tip: set PUBLIC_BASE_URL so Instagram can pull images from this service directly.');
-  }
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`[Startup] Web server listening on http://localhost:${PORT}`);
+    if (!mediaStore.baseUrl()) {
+      console.log('[Startup] Tip: set PUBLIC_BASE_URL so Instagram can pull images from this service directly.');
+    }
+  });
 
-try {
-  startListener();
-} catch (error) {
-  console.error(`[Startup] Queue listener failed to start: ${error.message}`);
+  try {
+    startListener();
+  } catch (error) {
+    console.error(`[Startup] Queue listener failed to start: ${error.message}`);
+  }
 }
+
+module.exports = server;
 
 // A crashed background daemon is worse than a logged error: keep running.
 process.on('uncaughtException', error => {

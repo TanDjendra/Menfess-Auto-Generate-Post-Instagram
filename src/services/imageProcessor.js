@@ -3,18 +3,26 @@ const { GIFEncoder, quantize, applyPalette } = require('gifenc');
 const fs = require('fs');
 const path = require('path');
 
+const os = require('os');
+
 const { initFonts } = require('./fonts');
 const { DESIGN, buildLayout, renderScene } = require('./cardRenderer');
 
 require('dotenv').config();
 
-const TEMP_DIR = path.join(process.cwd(), 'temp');
-const ASSETS_DIR = path.join(process.cwd(), 'assets');
+const TEMP_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'temp')
+  : path.join(process.cwd(), 'temp');
+const ASSETS_DIR = path.join(__dirname, '..', '..', 'assets');
 const FONTS_DIR = path.join(ASSETS_DIR, 'fonts');
 const TEMPLATE_PATH = path.join(ASSETS_DIR, 'template.png');
 
 for (const dir of [TEMP_DIR, ASSETS_DIR, FONTS_DIR]) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    console.warn(`[ImageProcessor] Could not create ${dir}: ${e.message}`);
+  }
 }
 
 initFonts();
