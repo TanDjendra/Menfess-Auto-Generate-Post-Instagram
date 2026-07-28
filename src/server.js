@@ -6,7 +6,7 @@ const { URL } = require('url');
 require('dotenv').config();
 
 const firebase = require('./config/firebase');
-const { startListener, getStats, QUEUE_PATH } = require('./queueListener');
+const { startListener, getStats, QUEUE_PATH, processPendingQueue } = require('./queueListener');
 const { renderCardBuffer, renderGifBuffer, cleanupTemp, CONFIG } = require('./services/imageProcessor');
 const { THEMES } = require('./services/themes');
 const { verifyCredentials, isConfigured } = require('./services/instagramService');
@@ -173,6 +173,10 @@ async function handleSubmit(req, res) {
 
     markCooldown('submit', ip);
     console.log(`[Server] New menfess queued from ${ip}. Key: ${ref.key}`);
+
+    // Immediately trigger processing for serverless environments (Vercel)
+    processPendingQueue().catch(err => console.error('[Server] Immediate queue processing error:', err.message));
+
     return sendJson(res, 200, { success: true, id: ref.key });
   } catch (err) {
     console.error('[Server] Submission failed:', err);
@@ -290,6 +294,12 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && (route === '/status' || route === '/api/status')) {
     return handleStatus(res).catch(err => sendJson(res, 500, { error: err.message }));
+  }
+
+  if ((req.method === 'GET' || req.method === 'POST') && (route === '/api/cron' || route === '/api/process-queue')) {
+    return processPendingQueue()
+      .then(count => sendJson(res, 200, { success: true, processed: count }))
+      .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   if (req.method === 'POST' && route === '/submit') {

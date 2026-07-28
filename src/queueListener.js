@@ -236,6 +236,42 @@ function startListener() {
   return true;
 }
 
+/**
+ * Process any pending queue items in Firebase (ideal for Serverless / Cron / Submit triggers).
+ */
+async function processPendingQueue() {
+  if (!firebase.isReady()) {
+    console.warn('[QueueListener] Cannot process queue: Firebase is not ready.');
+    return 0;
+  }
+
+  const db = firebase.db;
+  try {
+    const snapshot = await db.ref(QUEUE_PATH).orderByChild('posted').equalTo(false).limitToFirst(5).once('value');
+    if (!snapshot.exists()) return 0;
+
+    const items = snapshot.val();
+    let processedCount = 0;
+
+    for (const key of Object.keys(items)) {
+      const item = items[key];
+      if (!item || typeof item.text !== 'string' || !item.text.trim()) continue;
+
+      const ref = db.ref(`${QUEUE_PATH}/${key}`);
+      const claimed = await claimItem(ref);
+      if (claimed) {
+        await ref.update({ status: 'processing', processedAt: Date.now() });
+        await handleJob({ key, ref, text: item.text.trim(), attempts: 0 });
+        processedCount++;
+      }
+    }
+    return processedCount;
+  } catch (err) {
+    console.error(`[QueueListener] processPendingQueue error: ${err.message}`);
+    return 0;
+  }
+}
+
 function getStats() {
   return { ...stats, waiting: jobQueue.length, busy: isProcessing };
 }
@@ -244,5 +280,6 @@ module.exports = {
   startListener,
   getStats,
   processQueue,
+  processPendingQueue,
   QUEUE_PATH
 };
