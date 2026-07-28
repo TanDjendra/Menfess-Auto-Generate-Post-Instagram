@@ -56,26 +56,55 @@ async function uploadImageToPublicUrl(localFilePath) {
   const form = new FormData();
   form.append('file', fs.createReadStream(localFilePath));
 
-  try {
-    const response = await axios.post('https://tmpfiles.org/api/v1/upload', form, {
-      headers: { ...form.getHeaders() },
-      timeout: 60000,
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity
-    });
-
-    if (response.data && response.data.status === 'success' && response.data.data && response.data.data.url) {
-      // https://tmpfiles.org/12345/name.png -> https://tmpfiles.org/dl/12345/name.png
-      const directDownloadUrl = response.data.data.url.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/');
-      console.log(`[InstagramService] File uploaded successfully. Direct URL: ${directDownloadUrl}`);
-      return directDownloadUrl;
+  // Try multiple hosts in order of reliability
+  const hosts = [
+    {
+      name: 'imgur',
+      upload: async () => {
+        const imageData = fs.readFileSync(localFilePath).toString('base64');
+        const resp = await axios.post('https://api.imgur.com/3/image', {
+          image: imageData,
+          type: 'base64'
+        }, {
+          headers: { Authorization: 'Client-ID 546c25a59c58ad7' },
+          timeout: 60000
+        });
+        if (resp.data && resp.data.success && resp.data.data && resp.data.data.link) {
+          return resp.data.data.link;
+        }
+        throw new Error(`Bad response: ${JSON.stringify(resp.data)}`);
+      }
+    },
+    {
+      name: 'freeimage.host',
+      upload: async () => {
+        const imageData = fs.readFileSync(localFilePath).toString('base64');
+        const params = new URLSearchParams();
+        params.append('key', '6d207e02198a847aa98d0a2a901485a5');
+        params.append('source', imageData);
+        params.append('format', 'json');
+        const resp = await axios.post('https://freeimage.host/api/1/upload', params, {
+          timeout: 60000
+        });
+        if (resp.data && resp.data.status_code === 200 && resp.data.image && resp.data.image.url) {
+          return resp.data.image.url;
+        }
+        throw new Error(`Bad response: ${JSON.stringify(resp.data)}`);
+      }
     }
+  ];
 
-    throw new Error(`Unexpected upload response: ${JSON.stringify(response.data)}`);
-  } catch (error) {
-    const details = error.response ? JSON.stringify(error.response.data) : error.message;
-    throw new Error(`Temporary image upload failed: ${details}`);
+  for (const host of hosts) {
+    try {
+      const url = await host.upload();
+      console.log(`[InstagramService] File uploaded to ${host.name}. Direct URL: ${url}`);
+      return url;
+    } catch (err) {
+      console.warn(`[InstagramService] ${host.name} failed: ${err.message}. Trying next...`);
+    }
   }
+
+  throw new Error('All temporary image hosts failed.');
 }
 
 /**
