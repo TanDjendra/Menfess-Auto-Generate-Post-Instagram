@@ -256,6 +256,14 @@ async function handleStatus(res) {
     uptime: `${Math.round(process.uptime())}s`,
     timestamp: new Date().toISOString(),
     firebase: firebase.isReady(),
+    firebaseDebug: {
+      hasDbUrl: !!process.env.FIREBASE_DATABASE_URL,
+      dbUrlValue: process.env.FIREBASE_DATABASE_URL ? (process.env.FIREBASE_DATABASE_URL.slice(0, 25) + '...') : 'NONE',
+      hasCredentials: !!process.env.FIREBASE_CREDENTIALS,
+      credentialsLength: (process.env.FIREBASE_CREDENTIALS || '').length,
+      credentialsStartsWithBrace: (process.env.FIREBASE_CREDENTIALS || '').trim().startsWith('{'),
+      initError: firebase.getInitError ? firebase.getInitError() : null
+    },
     instagram: ig.ok ? { connected: true, username: ig.username } : { connected: false, reason: ig.error },
     dryRun: process.env.DRY_RUN === 'true',
     render: {
