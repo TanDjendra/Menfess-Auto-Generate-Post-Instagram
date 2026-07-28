@@ -1,147 +1,134 @@
-# Auto-Menfess Instagram Bot
+# Auto-Menfess Instagram Bot 💌✨
 
-Bot menfess 24/7: pesan anonim masuk lewat form web → digambar jadi **kartu lucu (kawaii)** →
-caption dibuat Gemini → diposting otomatis ke Instagram. Tiap kartu juga punya
-**versi GIF animasi** untuk Instagram Story.
+Bot Menfess Otomatis 24/7: Pengunjung mengirim pesan anonim melalui Web Form ➔ Sistem merender **Kartu Kawaii (PNG 1080×1080)** & **GIF Animasi (Story)** ➔ Gemini AI membuatkan caption lucu ➔ Otomatis di-post ke Feed & Story Instagram via Instagram Graph API.
 
+---
+
+## ⚙️ Cara Kerja Aplikasi Lengkap
+
+Aplikasi ini dirancang dengan arsitektur hybrid yang mendukung **Serverless (Vercel)** dan **Server 24/7 (Node.js / Docker / VPS)**.
+
+```mermaid
+flowchart TD
+    A[User Submit Menfess] --> B[Web Form /submit]
+    B --> C[(Firebase Realtime Database)]
+    C --> D{Mode Server}
+    
+    D -- Serverless / Vercel --E[Trigger Direct Processing /submit]
+    D -- Node.js Server 24/7 -- F[Queue Listener Listener]
+    
+    E --> G[1. Render Canvas Card PNG]
+    F --> G
+    
+    G --> H[2. Render Animated GIF 20-FPS]
+    H --> I[3. Generate Gemini AI Caption]
+    I --> J[4. Upload Image to Public Host]
+    
+    J -- Imgur / Freeimage -- K[Direct Image URL]
+    K --> L[5. Instagram Graph API /media]
+    L --> M[Instagram Media Container Created]
+    M --> N[6. Publish Container /media_publish]
+    N --> O[Update Firebase Status: success]
 ```
-form web  ─→  Firebase RTDB (queue)  ─→  worker
-                                          ├─ render kartu PNG 1080×1080
-                                          ├─ render GIF animasi (loop mulus)
-                                          ├─ caption Gemini
-                                          └─ publish Instagram Graph API
-```
 
-## Tampilan kartu
+### 🔁 Detail 6 Tahap Pemrosesan:
 
-Semua digambar dengan canvas (tanpa file gambar template), jadi ringan dan selalu tajam:
+#### 1. Pengiriman Pesan (Web Form & Preview)
+- Pengunjung membuka web menfess, memilih tema/palet warna, dan mengetik pesan.
+- Web menyediakan fitur **Live Preview Realtime** melalui API `/api/preview` tanpa menyimpan ke database.
+- Saat tombol **Kirim** ditekan, data dikirim ke endpoint `/submit` dan disimpan ke **Firebase Realtime Database** di bawah node `/menfess_queue` dengan status `queued`.
 
-- 8 palet pastel: `strawberry-milk`, `mint-soda`, `lavender-dream`, `peach-sunset`,
-  `blueberry-sky`, `matcha-latte`, `bubblegum-pop`, `cream-honey`
-- header kartu: ikon surat bertangkai hati (semua ikon digambar sendiri, bukan emoji)
-- 6 stiker: boba, awan pelangi, cupcake, surat cinta, bulan, bunga
-- washi tape, border jahitan putus-putus, polkadot, awan bergerigi, hati & sparkle melayang
-- **mood otomatis** dari isi pesan (cinta / sedih / kuliah / bahagia / makan / terima kasih / malam)
-  menentukan palet + label kartu, lengkap dengan ikonnya sendiri (surat, buku, hati diplester, popper, mangkuk, tulip, bulan, sparkle)
-- font imut bawaan (SIL OFL): Sniglet, Varela Round, Mali
-- maskot hewan (beruang/kucing/kelinci/panda/kodok/anak ayam) tersedia tapi **default mati**;
-  nyalakan dengan `CARD_MASCOT=true` kalau memang mau ada karakter di atas kartu
+#### 2. Antrean Realtime & Klaim Kunci (Queue Locking)
+- **Mode 24/7 Server (Node.js)**: Worker mendengarkan event Firebase (`posted === false`).
+- **Mode Serverless (Vercel)**: `/submit` langsung memicu fungsi `processSingleJob` secara instan sebelum merespons client.
+- Untuk mencegah double-post dari multiple instance, worker melakukan transaksi atomic locking pada node Firebase (`status: "processing"`, `posted: true`).
 
-Emoji hanya dipakai kalau pengirim menulisnya sendiri di pesannya — semua ornamen kartu
-digambar dengan path canvas, jadi tidak ada ikon "template" dan tampilannya sama di semua OS.
+#### 3. Machine-Rendering Kartu (Canvas 2D & GIF Engine)
+- **PNG Card (1080×1080px)**: Digambar secara dinamis menggunakan `@napi-rs/canvas` tanpa gambar template eksternal. 
+  - **Mood Detection**: AI/Heuristic menganalisis isi pesan (cinta, galau, kuliah, dll) untuk memilih palet warna dan ornamen pendukung.
+  - **Kawaii Vector Elements**: Menambahkan ornamen awan, bintang, washi tape, border jahitan, dan ikon mood.
+  - **Typography Auto-fit**: Teks pengirim disesuaikan ukurannya secara otomatis agar tidak meluap dari kartu.
+- **GIF Animasi (480px / 20 FPS)**: Digambar frame-by-frame untuk menghasilkan efek animasi bernapas, kilau *sparkle*, dan jantung berdenyut yang siap dipakai di Instagram Story.
 
-Animasi GIF: ikon surat mengambang & hatinya berdenyut, hati naik pelan, sparkle berkedip,
-kilau menyapu kartu, background bernapas. Semua periodik, jadi loop-nya mulus.
+#### 4. Pembuatan Caption Otomatis (Gemini AI)
+- Teks pengirim diproses oleh Google Gemini AI (`gemini-3.5-flash` dengan fallback `gemini-2.5-flash` / `gemini-2.0-flash`).
+- Gemini menghasilkan caption yang relevan, ramah, dan lucu dilengkapi dengan hashtag otomatis.
 
-> Catatan: Instagram Graph API **tidak menerima GIF** untuk post feed. Feed tetap pakai PNG;
-> GIF-nya tersedia di `/media/...` dan di galeri web untuk dipakai manual di Story.
+#### 5. Public Media Hosting (Imgur & Freeimage)
+- Instagram Graph API memerlukan **Direct Image URL** (URL publik langsung bersuffiks `.png`/`.jpg`).
+- Sistem secara otomatis meng-upload kartu PNG yang sudah dirender ke **Imgur API** (fallback **FreeImage.host**) untuk mendapatkan URL publik sementara yang valid.
+- Jika `PUBLIC_BASE_URL` diisi (pada server tersendiri), gambar disajikan langsung melalui endpoint `/media/<filename>`.
 
-## Menjalankan
+#### 6. Posting ke Instagram Graph API
+- **Container Creation**: Mengirimkan Direct Image URL & Caption ke Instagram Graph API (`POST /{ig-user-id}/media`).
+- **Status Polling**: Menunggu Instagram selesai memproses ingest media (`FINISHED`).
+- **Publish**: Menerbitkan media ke Feed Instagram (`POST /{ig-user-id}/media_publish`).
+- **Update Database**: Mengubah status item di Firebase menjadi `success` beserta `igPostId` dan waktu terbit.
 
+---
+
+## 🎨 Fitur Utama
+
+- 🎨 **8 Palet Warna Pastel Kawaii**: `strawberry-milk`, `mint-soda`, `lavender-dream`, `peach-sunset`, `blueberry-sky`, `matcha-latte`, `bubblegum-pop`, `cream-honey`.
+- 🤖 **Gemini AI Caption Engine**: Dibuat otomatis sesuai isi menfess.
+- 🎬 **Generator GIF Story**: Animasi halus 20 FPS untuk Instagram Story.
+- 📱 **Multi-Host Upload Fallback**: Imgur & FreeImage host terintegrasi.
+- ⚡ **Support Serverless & 24/7 Worker**: Siap di-deploy ke Vercel, Render, Docker, atau VPS.
+
+---
+
+## 🚀 Cara Menjalankan Secara Lokal
+
+### 1. Instalasi
 ```bash
+git clone https://github.com/TanDjendra/Menfess-Auto-Generate-Post-Instagram.git
+cd Menfess-Auto-Generate-Post-Instagram
 npm install
-cp .env.example .env   # lalu isi kredensialmu
+```
+
+### 2. Konfigurasi Environment (`.env`)
+Salin file `.env.example` menjadi `.env`:
+```bash
+cp .env.example .env
+```
+Isi variabel berikut:
+```env
+FIREBASE_DATABASE_URL=https://database-kamu.firebaseio.com
+FIREBASE_CREDENTIALS={"type":"service_account",...}
+IG_USER_ID=178414xxxxxxxxxx
+IG_ACCESS_TOKEN=EAAxxxxxxxxx
+GEMINI_API_KEY=AIzaSyxxxxxxxxx
+```
+
+### 3. Jalankan Aplikasi
+```bash
 npm start
 ```
+Buka browser di **`http://localhost:3005`** untuk membuka form menfess dan live preview.
 
-Buka `http://localhost:3000` untuk form kirim menfess + preview kartu langsung.
+---
 
-### Perintah lain
+## 🛠️ API Endpoints
 
-```bash
-npm test                  # cek renderer, GIF, caption Gemini, dan kredensial IG
-npm test -- --upload      # sekaligus tes upload gambar ke host publik
-npm run samples           # render 1 kartu per tema ke temp/samples
-npm run samples -- "teks menfess kamu"
-```
+| Method | Path | Deskripsi |
+|--------|------|-----------|
+| `GET` | `/` | Web Form Menfess, Live Preview, & Galeri Hasil Render |
+| `POST` | `/submit` | Mengirim menfess baru ke antrean |
+| `GET` / `POST` | `/api/preview` | Merender preview kartu PNG/GIF tanpa menyimpan |
+| `GET` | `/api/status` | Mengecek koneksi Firebase, token Instagram, & antrean |
+| `GET` | `/api/gallery` | Mengambil daftar hasil render terbaru |
+| `GET` | `/health` | Endpoint health check |
 
-## Endpoint
+---
 
-| Method | Path | Fungsi |
-|--------|------|--------|
-| GET | `/` | form kirim menfess + preview + galeri |
-| POST | `/submit` | `{ "text": "..." }` → masuk antrian |
-| GET/POST | `/api/preview?format=png\|gif&theme=&seed=` | render kartu langsung (tanpa menyimpan) |
-| GET | `/api/gallery` | daftar kartu terbaru (PNG + GIF) |
-| GET | `/api/themes` | daftar palet |
-| GET | `/api/status` | status Firebase, Instagram, antrian, konfigurasi render |
-| GET | `/health` | health check untuk Render/Railway |
-| GET | `/media/<file>` | file kartu PNG/GIF |
+## ❓ Troubleshooting
 
-## Konfigurasi penting
+- **`OAuthException Code 190` (Session Expired)**: Token Instagram kedaluwarsa. Perbarui `IG_ACCESS_TOKEN` dari Meta Graph API Explorer & perpanjang via Access Token Debugger (60 hari).
+- **`Format Gambar Tidak Diketahui`**: Instagram menolak URL hosting gambar yang berbentuk HTML redirect. Aplikasi ini sudah dilengkapi pemutus otomatis ke Imgur direct URL.
+- **`EADDRINUSE 3005`**: Port 3005 sedang digunakan oleh proses Node.js lain. Hentikan proses lama dengan `Stop-Process -Name node -Force` (PowerShell) atau `pkill node` (Linux).
 
-Semua opsi ada di [.env.example](.env.example). Yang paling berpengaruh:
+---
 
-- `PUBLIC_BASE_URL` — kalau diisi, Instagram menarik gambar langsung dari service ini
-  (`/media/...`). Kalau kosong, gambar diupload dulu ke tmpfiles.org (berlaku ±60 menit).
-- `DRY_RUN=true` — semua tetap dirender, tapi tidak diposting ke Instagram. Bagus untuk uji coba.
-- `QUEUE_PATH` — pisahkan antrian staging dan produksi.
-- `CARD_THEME` — pakai satu palet tetap (default: otomatis sesuai mood pesan).
-- `CARD_MASCOT=true` — tampilkan maskot hewan di atas kartu (default ikon surat).
-- `GIF_ENABLED`, `GIF_SIZE`, `GIF_FRAMES` — atur berat/ukuran GIF (480px × 20 frame ≈ 600 KB).
-- `POST_INTERVAL_MS` — jarak minimum antar posting, biar tidak kena rate limit Instagram.
-
-### Aturan Realtime Database
-
-Supaya query antrian tidak memindai seluruh node, tambahkan index:
-
-```json
-{
-  "rules": {
-    "menfess_queue": {
-      ".indexOn": "posted"
-    }
-  }
-}
-```
-
-## Cara kerja antrian
-
-1. `/submit` menulis `{ text, posted: false, status: "queued", createdAt }`.
-2. Worker melihat item baru (`posted === false`), lalu **mengklaim** item lewat transaction
-   Firebase (`posted → true`) sehingga dua instance tidak bisa memposting item yang sama.
-3. Kartu PNG + GIF dirender, caption dibuat, gambar dipublikasikan, status ditulis balik:
-   `theme`, `mascot`, `mood`, `imageFile`, `gifFile`, `caption`, `igPostId`, `postedAt`.
-4. Kalau gagal: status `retrying` dengan backoff eksponensial (default 3 percobaan),
-   lalu `failed` beserta `errorLog`.
-5. File lama di `temp/` dan `temp/media/` dibersihkan otomatis setiap 30 menit.
-
-## Struktur
-
-```
-src/
-  server.js                  HTTP server + routing + rate limit
-  queueListener.js           worker antrian (klaim, retry, throttle)
-  config/firebase.js         inisialisasi Firebase (file JSON atau env string)
-  public/index.html          form + preview langsung + galeri
-  services/
-    imageProcessor.js        render PNG & GIF, cleanup temp
-    cardRenderer.js          layout kartu + adegan animasi (design space 1080×1080)
-    kawaiiArt.js             kuas kawaii: hati, bintang, ikon mood, stiker, washi tape, maskot
-    themes.js                palet, ikon mood, stiker, deteksi mood
-    fonts.js                 registrasi font + fallback emoji (untuk teks pengirim)
-    mediaStore.js            simpan/serve/prune kartu hasil render
-    geminiService.js         caption Gemini + sanitasi + fallback offline
-    instagramService.js      upload URL publik + publish Graph API
-scripts/render-samples.js    render semua tema untuk dilihat cepat
-assets/fonts/                font OFL (Sniglet, Varela Round, Mali, Noto Emoji)
-```
-
-## Troubleshooting
-
-**`Error validating access token: Session has expired`** — token Instagram kedaluwarsa.
-Buat ulang token lewat Meta Developers → Graph API Explorer, lalu tukar menjadi
-long-lived token (berlaku ±60 hari) dan simpan di `IG_ACCESS_TOKEN`.
-
-**Emoji jadi kotak kosong** — tidak ada font emoji sistem. Di Linux pasang
-`fonts-noto-color-emoji`, atau taruh file emoji font di `assets/fonts/`.
-
-**Teks terlalu panjang** — ukuran font menyusut otomatis; di atas batas kartu, teks
-dipotong dengan `…`. Naikkan `MAX_TEXT_LENGTH` kalau mau pesan lebih panjang.
-
-**GIF terlalu besar** — turunkan `GIF_SIZE` (mis. 400) atau `GIF_FRAMES` (mis. 14).
-
-## Lisensi
+## 📄 Lisensi
 
 Proyek ini dilindungi di bawah lisensi [MIT](LICENSE).
-
