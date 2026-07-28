@@ -11,37 +11,50 @@ if (!dbUrl) console.error('[Firebase] FIREBASE_DATABASE_URL is not set.');
 if (!credentialsVar) console.error('[Firebase] FIREBASE_CREDENTIALS is not set.');
 
 /**
- * Accepts either a raw service-account JSON string (handy on Render/Railway)
+ * Accepts either a raw service-account JSON string (handy on Vercel/Render/Railway)
  * or a path to the key file on disk.
  */
 function resolveCredential(value) {
   if (!value) return null;
 
+  let serviceAccount = null;
+
   if (value.trim().startsWith('{')) {
     try {
-      const credential = admin.credential.cert(JSON.parse(value));
+      serviceAccount = JSON.parse(value);
       console.log('[Firebase] Using service account from FIREBASE_CREDENTIALS JSON string.');
-      return credential;
     } catch (error) {
       console.error(`[Firebase] FIREBASE_CREDENTIALS looks like JSON but failed to parse: ${error.message}`);
       return null;
     }
+  } else {
+    const absolutePath = path.isAbsolute(value) ? value : path.join(process.cwd(), value);
+    if (fs.existsSync(absolutePath)) {
+      try {
+        serviceAccount = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+        console.log(`[Firebase] Using service account key file: ${absolutePath}`);
+      } catch (error) {
+        console.error(`[Firebase] Failed to read service account file: ${error.message}`);
+        return null;
+      }
+    } else {
+      console.error(`[Firebase] Service account file not found at: ${absolutePath}`);
+    }
   }
 
-  const absolutePath = path.isAbsolute(value) ? value : path.join(process.cwd(), value);
-  if (!fs.existsSync(absolutePath)) {
-    console.error(`[Firebase] Service account file not found at: ${absolutePath}`);
-    return null;
+  if (serviceAccount) {
+    if (typeof serviceAccount.private_key === 'string') {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+    try {
+      return admin.credential.cert(serviceAccount);
+    } catch (err) {
+      console.error(`[Firebase] admin.credential.cert failed: ${err.message}`);
+      return null;
+    }
   }
 
-  try {
-    const parsed = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
-    console.log(`[Firebase] Using service account key file: ${absolutePath}`);
-    return admin.credential.cert(parsed);
-  } catch (error) {
-    console.error(`[Firebase] Failed to read service account file: ${error.message}`);
-    return null;
-  }
+  return null;
 }
 
 const appConfig = { databaseURL: dbUrl };
@@ -52,7 +65,9 @@ let db = null;
 let ready = false;
 
 try {
-  admin.initializeApp(appConfig);
+  if (!admin.apps.length) {
+    admin.initializeApp(appConfig);
+  }
   db = admin.database();
   ready = true;
 } catch (error) {
