@@ -4,8 +4,20 @@ const path = require('path');
 
 require('dotenv').config();
 
-const dbUrl = (process.env.FIREBASE_DATABASE_URL || '').trim();
-const credentialsVar = (process.env.FIREBASE_CREDENTIALS || '').trim();
+const dbUrl = (
+  process.env.FIREBASE_DATABASE_URL ||
+  process.env.FIREBASE_URL ||
+  process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+  ''
+).trim();
+
+const credentialsVar = (
+  process.env.FIREBASE_CREDENTIALS ||
+  process.env.FIREBASE_SERVICE_ACCOUNT ||
+  process.env.FIREBASE_KEY ||
+  process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+  ''
+).trim();
 
 if (!dbUrl) console.error('[Firebase] FIREBASE_DATABASE_URL is not set.');
 if (!credentialsVar) console.error('[Firebase] FIREBASE_CREDENTIALS is not set.');
