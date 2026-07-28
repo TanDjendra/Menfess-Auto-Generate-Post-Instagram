@@ -272,6 +272,28 @@ async function processPendingQueue() {
   }
 }
 
+/**
+ * Process a single menfess item directly (ideal for immediate processing on submit).
+ */
+async function processSingleJob(key, ref, text) {
+  if (!firebase.isReady()) {
+    console.warn('[QueueListener] Cannot process single job: Firebase is not ready.');
+    return false;
+  }
+  try {
+    const claimed = await claimItem(ref);
+    if (claimed) {
+      await ref.update({ status: 'processing', processedAt: Date.now() });
+      await handleJob({ key, ref, text, attempts: 0 });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error(`[QueueListener] processSingleJob error for ${key}: ${err.message}`);
+    return false;
+  }
+}
+
 function getStats() {
   return { ...stats, waiting: jobQueue.length, busy: isProcessing };
 }
@@ -281,5 +303,6 @@ module.exports = {
   getStats,
   processQueue,
   processPendingQueue,
+  processSingleJob,
   QUEUE_PATH
 };

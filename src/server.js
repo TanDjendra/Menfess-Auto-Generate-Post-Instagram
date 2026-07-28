@@ -6,7 +6,7 @@ const { URL } = require('url');
 require('dotenv').config();
 
 const firebase = require('./config/firebase');
-const { startListener, getStats, QUEUE_PATH, processPendingQueue } = require('./queueListener');
+const { startListener, getStats, QUEUE_PATH, processPendingQueue, processSingleJob } = require('./queueListener');
 const { renderCardBuffer, renderGifBuffer, cleanupTemp, CONFIG } = require('./services/imageProcessor');
 const { THEMES } = require('./services/themes');
 const { verifyCredentials, isConfigured } = require('./services/instagramService');
@@ -174,11 +174,11 @@ async function handleSubmit(req, res) {
     markCooldown('submit', ip);
     console.log(`[Server] New menfess queued from ${ip}. Key: ${ref.key}`);
 
-    // Immediately await processing for serverless environments (Vercel)
+    // Immediately process this specific item for serverless environments (Vercel)
     try {
-      await processPendingQueue();
+      await processSingleJob(ref.key, ref, text);
     } catch (err) {
-      console.error('[Server] Queue processing error:', err.message);
+      console.error('[Server] Single job processing error:', err.message);
     }
 
     return sendJson(res, 200, { success: true, id: ref.key });
