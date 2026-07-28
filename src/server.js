@@ -174,8 +174,12 @@ async function handleSubmit(req, res) {
     markCooldown('submit', ip);
     console.log(`[Server] New menfess queued from ${ip}. Key: ${ref.key}`);
 
-    // Immediately trigger processing for serverless environments (Vercel)
-    processPendingQueue().catch(err => console.error('[Server] Immediate queue processing error:', err.message));
+    // Immediately await processing for serverless environments (Vercel)
+    try {
+      await processPendingQueue();
+    } catch (err) {
+      console.error('[Server] Queue processing error:', err.message);
+    }
 
     return sendJson(res, 200, { success: true, id: ref.key });
   } catch (err) {
